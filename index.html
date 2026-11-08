@@ -1,1 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bangladesh Explorer & Spatial Portal</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #navbar {
+      height: 54px;
+      background: #0f172a;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+    #navbar h3 { margin: 0; font-size: 1.05rem; }
+    .nav-actions { display: flex; align-items: center; gap: 10px; }
+    .btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .btn-secondary { background: #334155; }
+    .btn-secondary:hover { background: #475569; }
+    #map {
+      height: calc(100vh - 54px);
+      width: 100%;
+    }
+    .spot-card {
+      width: 220px;
+    }
+    .spot-card img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+    .spot-card h4 {
+      margin: 4px 0 2px 0;
+      color: #0f172a;
+    }
+    .spot-card p {
+      font-size: 0.8rem;
+      color: #475569;
+      margin: 4px 0;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-weight: 600;
+    }
+    /* Simple Auth Modal */
+    #auth-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-box {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      width: 310px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+    .modal-box h3 { margin-top: 0; margin-bottom: 12px; }
+    .modal-box input {
+      width: 92%;
+      padding: 8px;
+      margin: 6px 0 12px 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="navbar">
+    <h3>Bangladesh Explorer & Hazard Watch</h3>
+    <div class="nav-actions">
+      <span id="user-status" style="font-size: 0.85rem; color: #94a3b8;">Guest View</span>
+      <button class="btn" id="auth-btn" onclick="openAuthModal()">Log In / Sign Up</button>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Auth Dialog -->
+  <div id="auth-modal">
+    <div class="modal-box">
+      <h3 id="modal-title">Sign In</h3>
+      <label style="font-size: 0.8rem;">Email</label>
+      <input type="email" id="auth-email" placeholder="you@example.com" />
+      <label style="font-size: 0.8rem;">Password</label>
+      <input type="password" id="auth-password" placeholder="••••••••" />
+      <div id="auth-error" style="color: #ef4444; font-size: 0.75rem; margin-bottom: 8px; display: none;"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="handleAuth('login')">Log In</button>
+        <button class="btn btn-secondary" onclick="handleAuth('signup')">Sign Up</button>
+        <button class="btn btn-secondary" onclick="closeAuthModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet & Supabase JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    // -------------------------------------------------------------------
+    // 1. SUPABASE CONFIGURATION (Insert your credentials here)
+    // -------------------------------------------------------------------
+    const SUPABASE_URL = "https://uwbspjdodrmmxphxkfbx.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3YnNwamRvZHJtbXhwaHhrZmJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTQ0NDIsImV4cCI6MjEwOTY5MDQ0Mn0.CQ7TB-6IppbuDu_riTRBYQ7mYTVc2FW9BG-xdTVhCuk";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -------------------------------------------------------------------
+    // 2. LEAFLET BASE SETUP
+    // -------------------------------------------------------------------
+    const map = L.map('map').setView([23.8103, 90.4125], 7);
+
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    const darkBasemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; CARTO'
+    });
+
+    let currentUser = null;
+    let selectedSpotId = null;
+
+    function getMarkerOptions(isHighlighted) {
+      return {
+        radius: isHighlighted ? 11 : 7,
+        fillColor: isHighlighted ? '#e11d48' : '#2563eb',
+        color: '#ffffff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9
+      };
+    }
+
+    function createPopupContent(props) {
+      return `
+        <div class="spot-card">
+          <span class="badge">${props.category || 'Spot'}</span>
+          <h4>${props.name}</h4>
+          <p>${props.desc || ''}</p>
+          ${props.image ? `<img src="${props.image}" alt="${props.name}" />` : ''}
+        </div>
+      `;
+    }
+
+    // Initialize Empty Layer Group
+    const touristLayer = L.geoJSON(null, {
+      pointToLayer: (feature, latlng) => L.circleMarker(latlng, getMarkerOptions(false)),
+      onEachFeature: (feature, layer) => {
+        const props = feature.properties;
+
+        // Hover tooltip (guest & default view)
+        layer.bindTooltip(`<strong>${props.name}</strong><br><small>${props.category || ''}</small>`, {
+          sticky: true,
+          direction: 'top'
+        });
+
+        // Click popup (shows detailed photo & description)
+        layer.bindPopup(createPopupContent(props));
+
+        // Click to select/highlight (only for authenticated users)
+        layer.on('click', () => {
+          if (currentUser) {
+            selectedSpotId = props.id;
+            refreshStyles();
+          }
+        });
+      }
+    }).addTo(map);
+
+    function refreshStyles() {
+      touristLayer.eachLayer((layer) => {
+        const isSelected = layer.feature.properties.id === selectedSpotId;
+        layer.setStyle(getMarkerOptions(isSelected));
+      });
+    }
+
+    // -------------------------------------------------------------------
+    // 3. FETCH LIVE POSTGIS DATA FROM SUPABASE
+    // -------------------------------------------------------------------
+    async function loadTouristSpots() {
+      try {
+        const { data, error } = await supabase.rpc('get_tourist_spots_geojson');
+        if (error) throw error;
+        if (data && data.features) {
+          touristLayer.clearLayers();
+          touristLayer.addData(data);
+          if (data.features.length > 0) {
+            map.fitBounds(touristLayer.getBounds(), { padding: [40, 40] });
+          }
+        }
+      } catch (err) {
+        console.error("Error loading spots from Supabase:", err.message);
+      }
+    }
+
+    // Emergency Hazard Layer Placeholder
+    const mockHazardLayer = L.layerGroup();
+    L.circle([22.1, 90.8], {
+      color: '#dc2626',
+      fillColor: '#ef4444',
+      fillOpacity: 0.25,
+      radius: 60000
+    }).bindPopup("<strong>Coastal Hazard Risk Zone</strong><br>Monsoon Cyclone & Surge Warning").addTo(mockHazardLayer);
+
+    // Layer Controls
+    L.control.layers(
+      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
+      { "Tourist Attractions": touristLayer, "Emergency / Hazard Zones (Demo)": mockHazardLayer },
+      { collapsed: false }
+    ).addTo(map);
+
+    // -------------------------------------------------------------------
+    // 4. SUPABASE AUTHENTICATION LOGIC
+    // -------------------------------------------------------------------
+    const modal = document.getElementById('auth-modal');
+    const authBtn = document.getElementById('auth-btn');
+    const userStatus = document.getElementById('user-status');
+    const authError = document.getElementById('auth-error');
+
+    function openAuthModal() {
+      if (currentUser) {
+        supabase.auth.signOut();
+      } else {
+        authError.style.display = 'none';
+        modal.style.display = 'flex';
+      }
+    }
+
+    function closeAuthModal() {
+      modal.style.display = 'none';
+    }
+
+    async function handleAuth(type) {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      authError.style.display = 'none';
+
+      let result;
+      if (type === 'signup') {
+        result = await supabase.auth.signUp({ email, password });
+      } else {
+        result = await supabase.auth.signInWithPassword({ email, password });
+      }
+
+      if (result.error) {
+        authError.textContent = result.error.message;
+        authError.style.display = 'block';
+      } else {
+        closeAuthModal();
+      }
+    }
+
+    // Monitor Auth State Changes (Login / Logout)
+    supabase.auth.onAuthStateChange((event, session) => {
+      currentUser = session ? session.user : null;
+
+      if (currentUser) {
+        authBtn.textContent = 'Log Out';
+        authBtn.classList.add('btn-secondary');
+        userStatus.textContent = `Logged in: ${currentUser.email.split('@')[0]} (Click to highlight)`;
+        userStatus.style.color = '#38bdf8';
+      } else {
+        authBtn.textContent = 'Log In / Sign Up';
+        authBtn.classList.remove('btn-secondary');
+        userStatus.textContent = 'Guest View (Hover for info)';
+        userStatus.style.color = '#94a3b8';
+        selectedSpotId = null;
+        refreshStyles();
+      }
+    });
+
+    // Initial Load
+    loadTouristSpots();
+  </script>
+</body>
+</html>
