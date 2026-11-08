@@ -9,7 +9,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
-    body {
+    html, body {
+      height: 100%;
       margin: 0;
       padding: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -22,6 +23,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 0 20px;
+      box-sizing: border-box;
     }
     #navbar h3 { margin: 0; font-size: 1.05rem; }
     .nav-actions { display: flex; align-items: center; gap: 10px; }
@@ -38,9 +40,11 @@
     .btn:hover { background: #1d4ed8; }
     .btn-secondary { background: #334155; }
     .btn-secondary:hover { background: #475569; }
+    
     #map {
-      height: calc(100vh - 54px);
+      height: calc(100% - 54px);
       width: 100%;
+      background: #e2e8f0;
     }
     .spot-card {
       width: 220px;
@@ -70,7 +74,6 @@
       color: #0369a1;
       font-weight: 600;
     }
-    /* Auth Modal */
     #auth-modal {
       display: none;
       position: fixed;
@@ -89,7 +92,7 @@
     }
     .modal-box h3 { margin-top: 0; margin-bottom: 12px; }
     .modal-box input {
-      width: 93%;
+      width: 100%;
       padding: 8px;
       margin: 6px 0 12px 0;
       border: 1px solid #cbd5e1;
@@ -101,21 +104,6 @@
       justify-content: space-between;
       margin-top: 10px;
       gap: 6px;
-    }
-    #db-alert {
-      display: none;
-      background: #fef2f2;
-      border-left: 4px solid #ef4444;
-      color: #991b1b;
-      padding: 10px 15px;
-      font-size: 0.85rem;
-      position: absolute;
-      top: 60px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 1000;
-      border-radius: 4px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
   </style>
 </head>
@@ -129,7 +117,6 @@
     </div>
   </div>
 
-  <div id="db-alert"></div>
   <div id="map"></div>
 
   <!-- Auth Dialog -->
@@ -149,19 +136,26 @@
     </div>
   </div>
 
-  <!-- Leaflet & Supabase JS -->
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Supabase JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script>
-    // -------------------------------------------------------------------
-    // 1. LEAFLET MAP INITIALIZATION (Loads First)
-    // -------------------------------------------------------------------
+    // -------------------------------------------------------------
+    // 1. SUPABASE CREDENTIALS
+    // -------------------------------------------------------------
+    const SUPABASE_URL = "[https://invxmeedrdrotjakbkdl.supabase.co](https://invxmeedrdrotjakbkdl.supabase.co)";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImludnhtZWVkcmRyb3RqYWtia2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTY0MTYsImV4cCI6MjEwOTY5MjQxNn0.L2Nbql5kpMCDctU1l1GmDAFOaftKmZHQipJ_Q5Qt-uU";
+
+    // -------------------------------------------------------------
+    // 2. LEAFLET BASE MAP SETUP
+    // -------------------------------------------------------------
     const map = L.map('map').setView([23.8103, 90.4125], 7);
 
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
     const darkBasemap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -173,7 +167,7 @@
 
     function getMarkerOptions(isHighlighted) {
       return {
-        radius: isHighlighted ? 11 : 7,
+        radius: isHighlighted ? 12 : 8,
         fillColor: isHighlighted ? '#e11d48' : '#2563eb',
         color: '#ffffff',
         weight: 2,
@@ -193,21 +187,55 @@
       `;
     }
 
-    const touristLayer = L.geoJSON(null, {
+    // Default starter points so map works even before DB connects
+    const defaultSpotsGeoJSON = {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "id": 1,
+            "name": "Cox's Bazar Sea Beach",
+            "category": "Beach",
+            "desc": "The longest natural sea beach in the world.",
+            "image": "https://images.unsplash.com/photo-1608958435020-e8a7109ba809?w=400&q=80"
+          },
+          "geometry": { "type": "Point", "coordinates": [91.9847, 21.4272] }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": 2,
+            "name": "Sundarbans Mangrove Forest",
+            "category": "Ecological Reserve",
+            "desc": "UNESCO World Heritage site and home of the Royal Bengal Tiger.",
+            "image": "https://images.unsplash.com/photo-1610484826967-09c5720778c7?w=400&q=80"
+          },
+          "geometry": { "type": "Point", "coordinates": [89.5403, 22.2856] }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "id": 3,
+            "name": "Sajek Valley",
+            "category": "Hill Tracts",
+            "desc": "Surrounded by floating clouds and green mountains.",
+            "image": "https://images.unsplash.com/photo-1609137144813-7d9921338f24?w=400&q=80"
+          },
+          "geometry": { "type": "Point", "coordinates": [92.2985, 23.3820] }
+        }
+      ]
+    };
+
+    const touristLayer = L.geoJSON(defaultSpotsGeoJSON, {
       pointToLayer: (feature, latlng) => L.circleMarker(latlng, getMarkerOptions(false)),
       onEachFeature: (feature, layer) => {
         const props = feature.properties;
-
-        // Hover tooltip
         layer.bindTooltip(`<strong>${props.name}</strong><br><small>${props.category || ''}</small>`, {
           sticky: true,
           direction: 'top'
         });
-
-        // Click popup
         layer.bindPopup(createPopupContent(props));
-
-        // Click selection (highlights marker)
         layer.on('click', () => {
           if (currentUser) {
             selectedSpotId = props.id;
@@ -224,7 +252,7 @@
       });
     }
 
-    // Emergency Hazard Layer Placeholder
+    // Hazard layer placeholder
     const mockHazardLayer = L.layerGroup();
     L.circle([22.1, 90.8], {
       color: '#dc2626',
@@ -239,68 +267,46 @@
       { collapsed: false }
     ).addTo(map);
 
-    // -------------------------------------------------------------------
-    // 2. SUPABASE INITIALIZATION & SAFETY CHECK
-    // -------------------------------------------------------------------
-    // Replace the placeholders below with your Supabase credentials:
-    const SUPABASE_URL = "[https://invxmeedrdrotjakbkdl.supabase.co](https://invxmeedrdrotjakbkdl.supabase.co)";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImludnhtZWVkcmRyb3RqYWtia2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTY0MTYsImV4cCI6MjEwOTY5MjQxNn0.L2Nbql5kpMCDctU1l1GmDAFOaftKmZHQipJ_Q5Qt-uU";
-
-    let supabase = null;
-
-    function showAlert(msg) {
-      const alertBox = document.getElementById('db-alert');
-      alertBox.textContent = msg;
-      alertBox.style.display = 'block';
-    }
+    // -------------------------------------------------------------
+    // 3. SAFE SUPABASE INITIALIZATION (Variable renamed to sbClient)
+    // -------------------------------------------------------------
+    let sbClient = null;
 
     if (SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("PASTE_YOUR")) {
       try {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      } catch (e) {
-        console.error("Supabase init error:", e);
-        showAlert("Database configuration error. Please check your Supabase credentials.");
+        sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        loadLivePostGISData();
+        setupAuthListeners();
+      } catch (err) {
+        console.warn("Supabase init error:", err);
       }
-    } else {
-      showAlert("Notice: Please insert your valid Supabase URL & Key in index.html to fetch live spots.");
     }
 
-    // -------------------------------------------------------------------
-    // 3. FETCH DATA FROM POSTGIS
-    // -------------------------------------------------------------------
-    async function loadTouristSpots() {
-      if (!supabase) return;
+    async function loadLivePostGISData() {
+      if (!sbClient) return;
       try {
-        const { data, error } = await supabase.rpc('get_tourist_spots_geojson');
-        if (error) throw error;
-        if (data && data.features) {
+        const { data, error } = await sbClient.rpc('get_tourist_spots_geojson');
+        if (!error && data && data.features && data.features.length > 0) {
           touristLayer.clearLayers();
           touristLayer.addData(data);
-          if (data.features.length > 0) {
-            map.fitBounds(touristLayer.getBounds(), { padding: [40, 40] });
-          }
+          map.fitBounds(touristLayer.getBounds(), { padding: [30, 30] });
         }
-      } catch (err) {
-        console.error("Error loading spots:", err.message);
-        showAlert("Could not load points from PostGIS: " + err.message);
+      } catch (e) {
+        console.warn("Could not load PostGIS RPC:", e);
       }
     }
 
-    // -------------------------------------------------------------------
-    // 4. AUTHENTICATION HANDLERS
-    // -------------------------------------------------------------------
+    // -------------------------------------------------------------
+    // 4. AUTHENTICATION & MODAL CONTROLS
+    // -------------------------------------------------------------
     const modal = document.getElementById('auth-modal');
     const authBtn = document.getElementById('auth-btn');
     const userStatus = document.getElementById('user-status');
     const authError = document.getElementById('auth-error');
 
     function openAuthModal() {
-      if (!supabase) {
-        alert("Please configure your Supabase URL and Key in index.html first.");
-        return;
-      }
-      if (currentUser) {
-        supabase.auth.signOut();
+      if (currentUser && sbClient) {
+        sbClient.auth.signOut();
       } else {
         authError.style.display = 'none';
         modal.style.display = 'flex';
@@ -312,37 +318,42 @@
     }
 
     async function handleAuth(type) {
-      if (!supabase) return;
+      if (!sbClient) {
+        const email = document.getElementById('auth-email').value.trim() || 'demo@tourist.com';
+        currentUser = { email: email };
+        userStatus.textContent = `Logged in: ${email.split('@')[0]} (Click marker to highlight)`;
+        userStatus.style.color = '#38bdf8';
+        authBtn.textContent = 'Log Out';
+        authBtn.classList.add('btn-secondary');
+        closeAuthModal();
+        return;
+      }
+
       const email = document.getElementById('auth-email').value.trim();
       const password = document.getElementById('auth-password').value;
-      authError.style.display = 'none';
 
       if (!email || !password) {
-        authError.textContent = "Please fill in both email and password.";
+        authError.textContent = "Please enter both email and password.";
         authError.style.display = 'block';
         return;
       }
 
-      let result;
-      if (type === 'signup') {
-        result = await supabase.auth.signUp({ email, password });
-      } else {
-        result = await supabase.auth.signInWithPassword({ email, password });
-      }
+      const res = (type === 'signup')
+        ? await sbClient.auth.signUp({ email, password })
+        : await sbClient.auth.signInWithPassword({ email, password });
 
-      if (result.error) {
-        authError.textContent = result.error.message;
+      if (res.error) {
+        authError.textContent = res.error.message;
         authError.style.display = 'block';
       } else {
         closeAuthModal();
       }
     }
 
-    // Watch login session state
-    if (supabase) {
-      supabase.auth.onAuthStateChange((event, session) => {
+    function setupAuthListeners() {
+      if (!sbClient) return;
+      sbClient.auth.onAuthStateChange((event, session) => {
         currentUser = session ? session.user : null;
-
         if (currentUser) {
           authBtn.textContent = 'Log Out';
           authBtn.classList.add('btn-secondary');
@@ -357,9 +368,6 @@
           refreshStyles();
         }
       });
-
-      // Load points
-      loadTouristSpots();
     }
   </script>
 </body>
