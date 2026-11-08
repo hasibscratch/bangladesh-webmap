@@ -373,7 +373,7 @@
     }
 
     // -------------------------------------------------------------
-    // 5. AUTHENTICATION HANDLERS
+    // 5. AUTHENTICATION HANDLERS (With live feedback & Demo mode)
     // -------------------------------------------------------------
     const authModal = document.getElementById('auth-modal');
     const authBtn = document.getElementById('auth-btn');
@@ -381,8 +381,15 @@
     const authError = document.getElementById('auth-error');
 
     function openAuthModal() {
-      if (currentUser && sbClient) {
-        sbClient.auth.signOut();
+      if (currentUser) {
+        if (sbClient) sbClient.auth.signOut();
+        currentUser = null;
+        userStatus.textContent = 'Guest View (Hover for info)';
+        userStatus.style.color = '#94a3b8';
+        authBtn.textContent = 'Log In / Sign Up';
+        authBtn.classList.remove('btn-secondary');
+        selectedSpotId = null;
+        refreshStyles();
       } else {
         authError.style.display = 'none';
         authModal.style.display = 'flex';
@@ -390,9 +397,18 @@
     }
 
     async function handleAuth(type) {
-      if (!sbClient) return;
+      authError.style.display = 'none';
+      authError.style.color = '#ef4444';
+
       const email = document.getElementById('auth-email').value.trim();
       const password = document.getElementById('auth-password').value;
+
+      // Check if Supabase keys were added
+      if (!sbClient) {
+        authError.innerHTML = "Database keys missing in code.<br><button type='button' class='btn btn-secondary' style='margin-top:6px;width:100%;' onclick='bypassLogin()'>Continue as Demo User</button>";
+        authError.style.display = 'block';
+        return;
+      }
 
       if (!email || !password) {
         authError.textContent = "Please enter both email and password.";
@@ -400,16 +416,44 @@
         return;
       }
 
-      const res = (type === 'signup')
-        ? await sbClient.auth.signUp({ email, password })
-        : await sbClient.auth.signInWithPassword({ email, password });
-
-      if (res.error) {
-        authError.textContent = res.error.message;
+      if (password.length < 6) {
+        authError.textContent = "Password must be at least 6 characters.";
         authError.style.display = 'block';
-      } else {
-        closeModal('auth-modal');
+        return;
       }
+
+      if (type === 'signup') {
+        const { data, error } = await sbClient.auth.signUp({ email, password });
+        if (error) {
+          authError.textContent = error.message;
+          authError.style.display = 'block';
+        } else if (data.user && (!data.session)) {
+          // Email confirmation is enabled in Supabase
+          authError.style.color = '#0284c7';
+          authError.innerHTML = "Check your email inbox to confirm your account, OR turn off 'Confirm email' in Supabase Dashboard.";
+          authError.style.display = 'block';
+        } else {
+          closeModal('auth-modal');
+        }
+      } else {
+        const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+        if (error) {
+          authError.textContent = error.message;
+          authError.style.display = 'block';
+        } else {
+          closeModal('auth-modal');
+        }
+      }
+    }
+
+    function bypassLogin() {
+      const email = document.getElementById('auth-email').value.trim() || 'demo@tourist.com';
+      currentUser = { email: email };
+      userStatus.textContent = `Logged in: ${email.split('@')[0]} (Demo Mode)`;
+      userStatus.style.color = '#38bdf8';
+      authBtn.textContent = 'Log Out';
+      authBtn.classList.add('btn-secondary');
+      closeModal('auth-modal');
     }
 
     function setupAuthListeners() {
