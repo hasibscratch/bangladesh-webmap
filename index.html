@@ -259,7 +259,14 @@
         });
       }
     }).addTo(map);
-
+    L.control.layers(
+      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
+      { 
+        "Tourist Attractions": touristLayer, 
+        "Emergency / Hazard Zones": hazardLayer 
+      },
+      { collapsed: false }
+    ).addTo(map);
     function refreshStyles() {
       touristLayer.eachLayer((layer) => {
         const id = layer.feature.properties.id || layer.feature.properties.name;
@@ -506,7 +513,108 @@
         uploadMsg.textContent = 'Error: ' + err.message;
       }
     }
+    // -------------------------------------------------------------
+    // HAZARD & EMERGENCY LAYERS
+    // -------------------------------------------------------------
+    const hazardData = {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "name": "Coastal Cyclone & Storm Surge Zone (Zone A)",
+            "hazard_type": "Cyclone & Surge",
+            "risk_level": "Critical",
+            "advisory": "High vulnerability to Category 3+ cyclones and tidal surges > 3m. Check local shelter status.",
+            "shelters": 420
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+              [89.15, 21.65],
+              [90.45, 21.85],
+              [91.80, 21.35],
+              [92.35, 20.80],
+              [92.10, 21.40],
+              [91.40, 22.30],
+              [90.20, 22.40],
+              [89.15, 22.00],
+              [89.15, 21.65]
+            ]]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "name": "Jamuna Riverbank Erosion & Flood Zone",
+            "hazard_type": "River Erosion & Flood",
+            "risk_level": "High",
+            "advisory": "Active monsoon erosion corridor. Embankment breaching alert during July–September.",
+            "shelters": 85
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+              [89.55, 25.40],
+              [89.80, 25.40],
+              [89.75, 24.20],
+              [89.50, 24.20],
+              [89.55, 25.40]
+            ]]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "name": "Chattogram Hill Tracts Landslide Zone",
+            "hazard_type": "Landslide",
+            "risk_level": "Moderate",
+            "advisory": "Steep slopes susceptible to debris flows following >150mm rainfall in 24 hours.",
+            "shelters": 34
+          },
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+              [92.10, 22.80],
+              [92.45, 22.80],
+              [92.50, 22.15],
+              [92.15, 22.15],
+              [92.10, 22.80]
+            ]]
+          }
+        }
+      ]
+    };
 
+    function getHazardStyle(feature) {
+      const level = feature.properties.risk_level;
+      if (level === 'Critical') {
+        return { color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.35, weight: 2 };
+      } else if (level === 'High') {
+        return { color: '#ea580c', fillColor: '#f97316', fillOpacity: 0.30, weight: 2 };
+      } else {
+        return { color: '#ca8a04', fillColor: '#eab308', fillOpacity: 0.25, weight: 1.5, dashArray: '4' };
+      }
+    }
+
+    const hazardLayer = L.geoJSON(hazardData, {
+      style: getHazardStyle,
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        layer.bindTooltip(`<strong>${p.name}</strong><br>Risk: <span style="color:#dc2626;font-weight:bold;">${p.risk_level}</span>`, {
+          sticky: true
+        });
+        layer.bindPopup(`
+          <div style="width:220px;">
+            <span class="badge" style="background:#fee2e2;color:#991b1b;">${p.hazard_type}</span>
+            <h4 style="margin:6px 0 4px 0;">${p.name}</h4>
+            <p style="font-size:0.8rem;margin:4px 0;"><strong>Advisory:</strong> ${p.advisory}</p>
+            <p style="font-size:0.75rem;color:#475569;margin:2px 0;"><strong>Designated Shelters:</strong> ${p.shelters}</p>
+          </div>
+        `);
+      }
+    });
+    
     // Initialize session check on load
     checkSavedSession();
   </script>
