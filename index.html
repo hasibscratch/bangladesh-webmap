@@ -70,13 +70,13 @@
       color: #0369a1;
       font-weight: 600;
     }
-    /* Simple Auth Modal */
+    /* Auth Modal */
     #auth-modal {
       display: none;
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(15, 23, 42, 0.6);
-      z-index: 2000;
+      background: rgba(15, 23, 42, 0.65);
+      z-index: 9999;
       align-items: center;
       justify-content: center;
     }
@@ -84,21 +84,38 @@
       background: white;
       padding: 24px;
       border-radius: 8px;
-      width: 310px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      width: 320px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
     }
     .modal-box h3 { margin-top: 0; margin-bottom: 12px; }
     .modal-box input {
-      width: 92%;
+      width: 93%;
       padding: 8px;
       margin: 6px 0 12px 0;
       border: 1px solid #cbd5e1;
       border-radius: 4px;
+      box-sizing: border-box;
     }
     .modal-actions {
       display: flex;
       justify-content: space-between;
       margin-top: 10px;
+      gap: 6px;
+    }
+    #db-alert {
+      display: none;
+      background: #fef2f2;
+      border-left: 4px solid #ef4444;
+      color: #991b1b;
+      padding: 10px 15px;
+      font-size: 0.85rem;
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      border-radius: 4px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
   </style>
 </head>
@@ -112,21 +129,22 @@
     </div>
   </div>
 
+  <div id="db-alert"></div>
   <div id="map"></div>
 
   <!-- Auth Dialog -->
   <div id="auth-modal">
     <div class="modal-box">
       <h3 id="modal-title">Sign In</h3>
-      <label style="font-size: 0.8rem;">Email</label>
+      <label style="font-size: 0.8rem; font-weight: 500;">Email</label>
       <input type="email" id="auth-email" placeholder="you@example.com" />
-      <label style="font-size: 0.8rem;">Password</label>
+      <label style="font-size: 0.8rem; font-weight: 500;">Password</label>
       <input type="password" id="auth-password" placeholder="••••••••" />
       <div id="auth-error" style="color: #ef4444; font-size: 0.75rem; margin-bottom: 8px; display: none;"></div>
       <div class="modal-actions">
         <button class="btn" onclick="handleAuth('login')">Log In</button>
         <button class="btn btn-secondary" onclick="handleAuth('signup')">Sign Up</button>
-        <button class="btn btn-secondary" onclick="closeAuthModal()">Cancel</button>
+        <button class="btn btn-secondary" onclick="closeAuthModal()">Close</button>
       </div>
     </div>
   </div>
@@ -137,14 +155,7 @@
 
   <script>
     // -------------------------------------------------------------------
-    // 1. SUPABASE CONFIGURATION (Insert your credentials here)
-    // -------------------------------------------------------------------
-    const SUPABASE_URL = "https://uwbspjdodrmmxphxkfbx.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3YnNwamRvZHJtbXhwaHhrZmJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTQ0NDIsImV4cCI6MjEwOTY5MDQ0Mn0.CQ7TB-6IppbuDu_riTRBYQ7mYTVc2FW9BG-xdTVhCuk";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    // -------------------------------------------------------------------
-    // 2. LEAFLET BASE SETUP
+    // 1. LEAFLET MAP INITIALIZATION (Loads First)
     // -------------------------------------------------------------------
     const map = L.map('map').setView([23.8103, 90.4125], 7);
 
@@ -174,7 +185,7 @@
     function createPopupContent(props) {
       return `
         <div class="spot-card">
-          <span class="badge">${props.category || 'Spot'}</span>
+          <span class="badge">${props.category || 'Tourist Spot'}</span>
           <h4>${props.name}</h4>
           <p>${props.desc || ''}</p>
           ${props.image ? `<img src="${props.image}" alt="${props.name}" />` : ''}
@@ -182,22 +193,21 @@
       `;
     }
 
-    // Initialize Empty Layer Group
     const touristLayer = L.geoJSON(null, {
       pointToLayer: (feature, latlng) => L.circleMarker(latlng, getMarkerOptions(false)),
       onEachFeature: (feature, layer) => {
         const props = feature.properties;
 
-        // Hover tooltip (guest & default view)
+        // Hover tooltip
         layer.bindTooltip(`<strong>${props.name}</strong><br><small>${props.category || ''}</small>`, {
           sticky: true,
           direction: 'top'
         });
 
-        // Click popup (shows detailed photo & description)
+        // Click popup
         layer.bindPopup(createPopupContent(props));
 
-        // Click to select/highlight (only for authenticated users)
+        // Click selection (highlights marker)
         layer.on('click', () => {
           if (currentUser) {
             selectedSpotId = props.id;
@@ -214,10 +224,52 @@
       });
     }
 
+    // Emergency Hazard Layer Placeholder
+    const mockHazardLayer = L.layerGroup();
+    L.circle([22.1, 90.8], {
+      color: '#dc2626',
+      fillColor: '#ef4444',
+      fillOpacity: 0.25,
+      radius: 60000
+    }).bindPopup("<strong>Coastal Hazard Risk Zone</strong><br>Monsoon Cyclone & Surge Warning").addTo(mockHazardLayer);
+
+    L.control.layers(
+      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
+      { "Tourist Attractions": touristLayer, "Emergency / Hazard Zones (Demo)": mockHazardLayer },
+      { collapsed: false }
+    ).addTo(map);
+
     // -------------------------------------------------------------------
-    // 3. FETCH LIVE POSTGIS DATA FROM SUPABASE
+    // 2. SUPABASE INITIALIZATION & SAFETY CHECK
+    // -------------------------------------------------------------------
+    // Replace the placeholders below with your Supabase credentials:
+    const SUPABASE_URL = https://uwbspjdodrmmxphxkfbx.supabase.co;
+    const SUPABASE_ANON_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3YnNwamRvZHJtbXhwaHhrZmJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTQ0NDIsImV4cCI6MjEwOTY5MDQ0Mn0.CQ7TB-6IppbuDu_riTRBYQ7mYTVc2FW9BG-xdTVhCuk;
+
+    let supabase = null;
+
+    function showAlert(msg) {
+      const alertBox = document.getElementById('db-alert');
+      alertBox.textContent = msg;
+      alertBox.style.display = 'block';
+    }
+
+    if (SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("PASTE_YOUR")) {
+      try {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      } catch (e) {
+        console.error("Supabase init error:", e);
+        showAlert("Database configuration error. Please check your Supabase credentials.");
+      }
+    } else {
+      showAlert("Notice: Please insert your valid Supabase URL & Key in index.html to fetch live spots.");
+    }
+
+    // -------------------------------------------------------------------
+    // 3. FETCH DATA FROM POSTGIS
     // -------------------------------------------------------------------
     async function loadTouristSpots() {
+      if (!supabase) return;
       try {
         const { data, error } = await supabase.rpc('get_tourist_spots_geojson');
         if (error) throw error;
@@ -229,28 +281,13 @@
           }
         }
       } catch (err) {
-        console.error("Error loading spots from Supabase:", err.message);
+        console.error("Error loading spots:", err.message);
+        showAlert("Could not load points from PostGIS: " + err.message);
       }
     }
 
-    // Emergency Hazard Layer Placeholder
-    const mockHazardLayer = L.layerGroup();
-    L.circle([22.1, 90.8], {
-      color: '#dc2626',
-      fillColor: '#ef4444',
-      fillOpacity: 0.25,
-      radius: 60000
-    }).bindPopup("<strong>Coastal Hazard Risk Zone</strong><br>Monsoon Cyclone & Surge Warning").addTo(mockHazardLayer);
-
-    // Layer Controls
-    L.control.layers(
-      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
-      { "Tourist Attractions": touristLayer, "Emergency / Hazard Zones (Demo)": mockHazardLayer },
-      { collapsed: false }
-    ).addTo(map);
-
     // -------------------------------------------------------------------
-    // 4. SUPABASE AUTHENTICATION LOGIC
+    // 4. AUTHENTICATION HANDLERS
     // -------------------------------------------------------------------
     const modal = document.getElementById('auth-modal');
     const authBtn = document.getElementById('auth-btn');
@@ -258,6 +295,10 @@
     const authError = document.getElementById('auth-error');
 
     function openAuthModal() {
+      if (!supabase) {
+        alert("Please configure your Supabase URL and Key in index.html first.");
+        return;
+      }
       if (currentUser) {
         supabase.auth.signOut();
       } else {
@@ -271,9 +312,16 @@
     }
 
     async function handleAuth(type) {
+      if (!supabase) return;
       const email = document.getElementById('auth-email').value.trim();
       const password = document.getElementById('auth-password').value;
       authError.style.display = 'none';
+
+      if (!email || !password) {
+        authError.textContent = "Please fill in both email and password.";
+        authError.style.display = 'block';
+        return;
+      }
 
       let result;
       if (type === 'signup') {
@@ -290,27 +338,29 @@
       }
     }
 
-    // Monitor Auth State Changes (Login / Logout)
-    supabase.auth.onAuthStateChange((event, session) => {
-      currentUser = session ? session.user : null;
+    // Watch login session state
+    if (supabase) {
+      supabase.auth.onAuthStateChange((event, session) => {
+        currentUser = session ? session.user : null;
 
-      if (currentUser) {
-        authBtn.textContent = 'Log Out';
-        authBtn.classList.add('btn-secondary');
-        userStatus.textContent = `Logged in: ${currentUser.email.split('@')[0]} (Click to highlight)`;
-        userStatus.style.color = '#38bdf8';
-      } else {
-        authBtn.textContent = 'Log In / Sign Up';
-        authBtn.classList.remove('btn-secondary');
-        userStatus.textContent = 'Guest View (Hover for info)';
-        userStatus.style.color = '#94a3b8';
-        selectedSpotId = null;
-        refreshStyles();
-      }
-    });
+        if (currentUser) {
+          authBtn.textContent = 'Log Out';
+          authBtn.classList.add('btn-secondary');
+          userStatus.textContent = `Logged in: ${currentUser.email.split('@')[0]} (Click to highlight)`;
+          userStatus.style.color = '#38bdf8';
+        } else {
+          authBtn.textContent = 'Log In / Sign Up';
+          authBtn.classList.remove('btn-secondary');
+          userStatus.textContent = 'Guest View (Hover for info)';
+          userStatus.style.color = '#94a3b8';
+          selectedSpotId = null;
+          refreshStyles();
+        }
+      });
 
-    // Initial Load
-    loadTouristSpots();
+      // Load points
+      loadTouristSpots();
+    }
   </script>
 </body>
 </html>
