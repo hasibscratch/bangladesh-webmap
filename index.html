@@ -40,15 +40,15 @@
     .btn:hover { background: #1d4ed8; }
     .btn-secondary { background: #334155; }
     .btn-secondary:hover { background: #475569; }
+    .btn-success { background: #16a34a; }
+    .btn-success:hover { background: #15803d; }
     
     #map {
       height: calc(100% - 54px);
       width: 100%;
       background: #e2e8f0;
     }
-    .spot-card {
-      width: 220px;
-    }
+    .spot-card { width: 220px; }
     .spot-card img {
       width: 100%;
       height: 120px;
@@ -56,15 +56,8 @@
       border-radius: 6px;
       margin-top: 6px;
     }
-    .spot-card h4 {
-      margin: 4px 0 2px 0;
-      color: #0f172a;
-    }
-    .spot-card p {
-      font-size: 0.8rem;
-      color: #475569;
-      margin: 4px 0;
-    }
+    .spot-card h4 { margin: 4px 0 2px 0; color: #0f172a; }
+    .spot-card p { font-size: 0.8rem; color: #475569; margin: 4px 0; }
     .badge {
       display: inline-block;
       font-size: 0.7rem;
@@ -74,7 +67,8 @@
       color: #0369a1;
       font-weight: 600;
     }
-    #auth-modal {
+    /* Modals */
+    .modal-overlay {
       display: none;
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -87,11 +81,13 @@
       background: white;
       padding: 24px;
       border-radius: 8px;
-      width: 320px;
+      width: 340px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.3);
     }
     .modal-box h3 { margin-top: 0; margin-bottom: 12px; }
-    .modal-box input {
+    .modal-box input[type="text"],
+    .modal-box input[type="email"],
+    .modal-box input[type="password"] {
       width: 100%;
       padding: 8px;
       margin: 6px 0 12px 0;
@@ -102,8 +98,21 @@
     .modal-actions {
       display: flex;
       justify-content: space-between;
-      margin-top: 10px;
+      margin-top: 14px;
       gap: 6px;
+    }
+    #status-toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1e293b;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      display: none;
+      z-index: 10000;
     }
   </style>
 </head>
@@ -112,15 +121,17 @@
   <div id="navbar">
     <h3>Bangladesh Explorer & Hazard Watch</h3>
     <div class="nav-actions">
+      <button class="btn btn-success" id="upload-btn" onclick="openUploadModal()">Import GIS Layer</button>
       <span id="user-status" style="font-size: 0.85rem; color: #94a3b8;">Guest View</span>
       <button class="btn" id="auth-btn" onclick="openAuthModal()">Log In / Sign Up</button>
     </div>
   </div>
 
   <div id="map"></div>
+  <div id="status-toast"></div>
 
   <!-- Auth Dialog -->
-  <div id="auth-modal">
+  <div id="auth-modal" class="modal-overlay">
     <div class="modal-box">
       <h3 id="modal-title">Sign In</h3>
       <label style="font-size: 0.8rem; font-weight: 500;">Email</label>
@@ -131,15 +142,33 @@
       <div class="modal-actions">
         <button class="btn" onclick="handleAuth('login')">Log In</button>
         <button class="btn btn-secondary" onclick="handleAuth('signup')">Sign Up</button>
-        <button class="btn btn-secondary" onclick="closeAuthModal()">Close</button>
+        <button class="btn btn-secondary" onclick="closeModal('auth-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Upload Dialog -->
+  <div id="upload-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>Import GIS Data</h3>
+      <p style="font-size: 0.8rem; color: #64748b; margin-top: 0;">
+        Upload a <strong>.geojson</strong> or zipped Shapefile (<strong>.zip</strong>) exported from QGIS (Point Layer, EPSG:4326).
+      </p>
+      <input type="file" id="gis-file-input" accept=".geojson,.json,.zip" style="margin: 12px 0; font-size: 0.85rem;" />
+      <div id="upload-msg" style="font-size: 0.8rem; margin-bottom: 8px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-success" onclick="processUploadedFile()">Upload & Sync</button>
+        <button class="btn btn-secondary" onclick="closeModal('upload-modal')">Cancel</button>
       </div>
     </div>
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Supabase JS CDN -->
+  <!-- Supabase JS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- shpjs: Parses Zipped Shapefiles in browser -->
+  <script src="https://unpkg.com/shpjs@latest/dist/shp.js"></script>
 
   <script>
     // -------------------------------------------------------------
@@ -149,7 +178,7 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImludnhtZWVkcmRyb3RqYWtia2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTY0MTYsImV4cCI6MjEwOTY5MjQxNn0.L2Nbql5kpMCDctU1l1GmDAFOaftKmZHQipJ_Q5Qt-uU";
 
     // -------------------------------------------------------------
-    // 2. LEAFLET BASE MAP SETUP
+    // 2. BASE MAP INITIALIZATION
     // -------------------------------------------------------------
     const map = L.map('map').setView([23.8103, 90.4125], 7);
 
@@ -179,59 +208,19 @@
     function createPopupContent(props) {
       return `
         <div class="spot-card">
-          <span class="badge">${props.category || 'Tourist Spot'}</span>
-          <h4>${props.name}</h4>
-          <p>${props.desc || ''}</p>
-          ${props.image ? `<img src="${props.image}" alt="${props.name}" />` : ''}
+          <span class="badge">${props.category || 'Spot'}</span>
+          <h4>${props.name || 'Unnamed Spot'}</h4>
+          <p>${props.desc || props.description || ''}</p>
+          ${props.image || props.image_url ? `<img src="${props.image || props.image_url}" alt="${props.name || ''}" />` : ''}
         </div>
       `;
     }
 
-    // Default starter points so map works even before DB connects
-    const defaultSpotsGeoJSON = {
-      "type": "FeatureCollection",
-      "features": [
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 1,
-            "name": "Cox's Bazar Sea Beach",
-            "category": "Beach",
-            "desc": "The longest natural sea beach in the world.",
-            "image": "https://images.unsplash.com/photo-1608958435020-e8a7109ba809?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [91.9847, 21.4272] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 2,
-            "name": "Sundarbans Mangrove Forest",
-            "category": "Ecological Reserve",
-            "desc": "UNESCO World Heritage site and home of the Royal Bengal Tiger.",
-            "image": "https://images.unsplash.com/photo-1610484826967-09c5720778c7?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [89.5403, 22.2856] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 3,
-            "name": "Sajek Valley",
-            "category": "Hill Tracts",
-            "desc": "Surrounded by floating clouds and green mountains.",
-            "image": "https://images.unsplash.com/photo-1609137144813-7d9921338f24?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [92.2985, 23.3820] }
-        }
-      ]
-    };
-
-    const touristLayer = L.geoJSON(defaultSpotsGeoJSON, {
+    const touristLayer = L.geoJSON(null, {
       pointToLayer: (feature, latlng) => L.circleMarker(latlng, getMarkerOptions(false)),
       onEachFeature: (feature, layer) => {
         const props = feature.properties;
-        layer.bindTooltip(`<strong>${props.name}</strong><br><small>${props.category || ''}</small>`, {
+        layer.bindTooltip(`<strong>${props.name || 'Spot'}</strong><br><small>${props.category || ''}</small>`, {
           sticky: true,
           direction: 'top'
         });
@@ -268,7 +257,7 @@
     ).addTo(map);
 
     // -------------------------------------------------------------
-    // 3. SAFE SUPABASE INITIALIZATION (Variable renamed to sbClient)
+    // 3. DATABASE INITIALIZATION
     // -------------------------------------------------------------
     let sbClient = null;
 
@@ -297,9 +286,96 @@
     }
 
     // -------------------------------------------------------------
-    // 4. AUTHENTICATION & MODAL CONTROLS
+    // 4. SHAPEFILE & GEOJSON FILE PROCESSOR
     // -------------------------------------------------------------
-    const modal = document.getElementById('auth-modal');
+    function showToast(msg) {
+      const toast = document.getElementById('status-toast');
+      toast.textContent = msg;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 4000);
+    }
+
+    function openUploadModal() {
+      if (!currentUser) {
+        showToast("Please log in first to upload and persist GIS data.");
+        openAuthModal();
+        return;
+      }
+      document.getElementById('upload-msg').textContent = '';
+      document.getElementById('upload-modal').style.display = 'flex';
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    async function processUploadedFile() {
+      const fileInput = document.getElementById('gis-file-input');
+      const uploadMsg = document.getElementById('upload-msg');
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        uploadMsg.style.color = '#ef4444';
+        uploadMsg.textContent = 'Please choose a GeoJSON or Zipped Shapefile.';
+        return;
+      }
+
+      const file = fileInput.files[0];
+      uploadMsg.style.color = '#2563eb';
+      uploadMsg.textContent = 'Parsing spatial geometry...';
+
+      try {
+        let geojson;
+        if (file.name.endsWith('.zip')) {
+          const buffer = await file.arrayBuffer();
+          geojson = await shp(buffer);
+        } else {
+          const text = await file.text();
+          geojson = JSON.parse(text);
+        }
+
+        // Standardize feature array if shpjs returns a multi-layer array
+        const features = Array.isArray(geojson) ? geojson[0].features : geojson.features;
+
+        if (!features || features.length === 0) {
+          throw new Error("No features found in the uploaded GIS file.");
+        }
+
+        uploadMsg.textContent = `Syncing ${features.length} spots to PostGIS...`;
+
+        let insertedCount = 0;
+        for (const f of features) {
+          if (!f.geometry || f.geometry.type !== 'Point') continue;
+          
+          const coords = f.geometry.coordinates; // [lng, lat]
+          const props = f.properties || {};
+
+          if (sbClient) {
+            await sbClient.rpc('insert_tourist_spot', {
+              p_name: props.name || props.Name || 'New Tourist Spot',
+              p_category: props.category || props.Category || 'General',
+              p_description: props.desc || props.description || props.Description || '',
+              p_image_url: props.image || props.image_url || props.Image || '',
+              p_lng: coords[0],
+              p_lat: coords[1]
+            });
+          }
+          insertedCount++;
+        }
+
+        closeModal('upload-modal');
+        showToast(`Successfully imported and synced ${insertedCount} spots!`);
+        await loadLivePostGISData();
+
+      } catch (err) {
+        uploadMsg.style.color = '#ef4444';
+        uploadMsg.textContent = 'Error: ' + err.message;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 5. AUTHENTICATION HANDLERS
+    // -------------------------------------------------------------
+    const authModal = document.getElementById('auth-modal');
     const authBtn = document.getElementById('auth-btn');
     const userStatus = document.getElementById('user-status');
     const authError = document.getElementById('auth-error');
@@ -309,26 +385,12 @@
         sbClient.auth.signOut();
       } else {
         authError.style.display = 'none';
-        modal.style.display = 'flex';
+        authModal.style.display = 'flex';
       }
-    }
-
-    function closeAuthModal() {
-      modal.style.display = 'none';
     }
 
     async function handleAuth(type) {
-      if (!sbClient) {
-        const email = document.getElementById('auth-email').value.trim() || 'demo@tourist.com';
-        currentUser = { email: email };
-        userStatus.textContent = `Logged in: ${email.split('@')[0]} (Click marker to highlight)`;
-        userStatus.style.color = '#38bdf8';
-        authBtn.textContent = 'Log Out';
-        authBtn.classList.add('btn-secondary');
-        closeAuthModal();
-        return;
-      }
-
+      if (!sbClient) return;
       const email = document.getElementById('auth-email').value.trim();
       const password = document.getElementById('auth-password').value;
 
@@ -346,7 +408,7 @@
         authError.textContent = res.error.message;
         authError.style.display = 'block';
       } else {
-        closeAuthModal();
+        closeModal('auth-modal');
       }
     }
 
@@ -357,7 +419,7 @@
         if (currentUser) {
           authBtn.textContent = 'Log Out';
           authBtn.classList.add('btn-secondary');
-          userStatus.textContent = `Logged in: ${currentUser.email.split('@')[0]} (Click to highlight)`;
+          userStatus.textContent = `Logged in: ${currentUser.email.split('@')[0]} (Click marker to highlight)`;
           userStatus.style.color = '#38bdf8';
         } else {
           authBtn.textContent = 'Log In / Sign Up';
@@ -372,3 +434,4 @@
   </script>
 </body>
 </html>
+    
