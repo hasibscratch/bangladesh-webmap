@@ -194,7 +194,7 @@
 
   <script>
     // -------------------------------------------------------------
-    // 1. DATABASE CONFIGURATION
+    // 1. SUPABASE DATABASE CONFIGURATION
     // -------------------------------------------------------------
     const SUPABASE_URL = "[https://invxmeedrdrotjakbkdl.supabase.co](https://invxmeedrdrotjakbkdl.supabase.co)";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImludnhtZWVkcmRyb3RqYWtia2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTY0MTYsImV4cCI6MjEwOTY5MjQxNn0.L2Nbql5kpMCDctU1l1GmDAFOaftKmZHQipJ_Q5Qt-uU";
@@ -227,7 +227,6 @@
       };
     }
 
-    // Resolves image preview issues: sets referrer policy and a dependable scenic fallback
     function createPopupContent(props) {
       const imgSrc = props.image || props.image_url || props.Image || props.img || props.photo || '';
       const fallbackImg = "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=80";
@@ -242,40 +241,9 @@
       `;
     }
 
-    const touristLayer = L.geoJSON(null, {
-      pointToLayer: (feature, latlng) => L.circleMarker(latlng, getMarkerOptions(false)),
-      onEachFeature: (feature, layer) => {
-        const props = feature.properties;
-        layer.bindTooltip(`<strong>${props.name || 'Spot'}</strong><br><small>${props.category || ''}</small>`, {
-          sticky: true,
-          direction: 'top'
-        });
-        layer.bindPopup(createPopupContent(props));
-        layer.on('click', () => {
-          if (currentUser) {
-            selectedSpotId = props.id || props.name;
-            refreshStyles();
-          }
-        });
-      }
-    }).addTo(map);
-    L.control.layers(
-      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
-      { 
-        "Tourist Attractions": touristLayer, 
-        "Emergency / Hazard Zones": hazardLayer 
-      },
-      { collapsed: false }
-    ).addTo(map);
-    function refreshStyles() {
-      touristLayer.eachLayer((layer) => {
-        const id = layer.feature.properties.id || layer.feature.properties.name;
-        const isSelected = id === selectedSpotId;
-        layer.setStyle(getMarkerOptions(isSelected));
-      });
-    }
-
-    // Default starter points
+    // -------------------------------------------------------------
+    // 3. TOURIST SPOTS LAYER
+    // -------------------------------------------------------------
     const defaultSpotsGeoJSON = {
       "type": "FeatureCollection",
       "features": [
@@ -314,207 +282,35 @@
         }
       ]
     };
-    touristLayer.addData(defaultSpotsGeoJSON);
 
-    // Hazard demo layer
-    const mockHazardLayer = L.layerGroup();
-    L.circle([22.1, 90.8], {
-      color: '#dc2626',
-      fillColor: '#ef4444',
-      fillOpacity: 0.25,
-      radius: 60000
-    }).bindPopup("<strong>Coastal Hazard Risk Zone</strong><br>Monsoon Cyclone & Surge Warning").addTo(mockHazardLayer);
-
-    L.control.layers(
-      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
-      { "Tourist Attractions": touristLayer, "Emergency / Hazard Zones (Demo)": mockHazardLayer },
-      { collapsed: false }
-    ).addTo(map);
-
-    // -------------------------------------------------------------
-    // 3. PERSISTENT AUTHENTICATION & ADMIN ROLES
-    // -------------------------------------------------------------
-    let sbClient = null;
-    if (SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("PASTE_YOUR")) {
-      try {
-        sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      } catch (e) {
-        console.warn("Supabase init error:", e);
+    const touristLayer = L.geoJSON(defaultSpotsGeoJSON, {
+      pointToLayer: (feature, latlng) => L.circleMarker(latlng, getMarkerOptions(false)),
+      onEachFeature: (feature, layer) => {
+        const props = feature.properties;
+        layer.bindTooltip(`<strong>${props.name || 'Spot'}</strong><br><small>${props.category || ''}</small>`, {
+          sticky: true,
+          direction: 'top'
+        });
+        layer.bindPopup(createPopupContent(props));
+        layer.on('click', () => {
+          if (currentUser) {
+            selectedSpotId = props.id || props.name;
+            refreshStyles();
+          }
+        });
       }
-    }
+    }).addTo(map);
 
-    const authModal = document.getElementById('auth-modal');
-    const authBtn = document.getElementById('auth-btn');
-    const userStatus = document.getElementById('user-status');
-    const authError = document.getElementById('auth-error');
-
-    function updateNavbar() {
-      if (currentUser) {
-        authBtn.textContent = 'Log Out';
-        authBtn.classList.add('btn-secondary');
-        const roleBadge = currentUser.role === 'admin' 
-          ? `<span class="admin-badge">Admin / Provider</span>` 
-          : `<span style="color:#38bdf8;">User</span>`;
-        userStatus.innerHTML = `${roleBadge} ${currentUser.email.split('@')[0]} (Click to highlight)`;
-      } else {
-        authBtn.textContent = 'Log In / Provider';
-        authBtn.classList.remove('btn-secondary');
-        userStatus.textContent = 'Guest View (Hover for info)';
-        userStatus.style.color = '#94a3b8';
-        selectedSpotId = null;
-        refreshStyles();
-      }
-    }
-
-    // Set user and persist across page refreshes
-    function setSessionUser(user) {
-      currentUser = user;
-      localStorage.setItem('bangladesh_webmap_user', JSON.stringify(user));
-      updateNavbar();
-    }
-
-    function checkSavedSession() {
-      const saved = localStorage.getItem('bangladesh_webmap_user');
-      if (saved) {
-        try {
-          currentUser = JSON.parse(saved);
-          updateNavbar();
-        } catch (e) {
-          localStorage.removeItem('bangladesh_webmap_user');
-        }
-      }
-    }
-
-    function openAuthModal() {
-      if (currentUser) {
-        if (sbClient) sbClient.auth.signOut();
-        currentUser = null;
-        localStorage.removeItem('bangladesh_webmap_user');
-        updateNavbar();
-      } else {
-        authError.style.display = 'none';
-        authModal.style.display = 'flex';
-      }
-    }
-
-    function closeModal(id) {
-      document.getElementById(id).style.display = 'none';
-    }
-
-    // One-Click Admin & Provider Login
-    function loginAsAdmin() {
-      setSessionUser({
-        email: "admin@geoportal.bd",
-        role: "admin"
+    function refreshStyles() {
+      touristLayer.eachLayer((layer) => {
+        const id = layer.feature.properties.id || layer.feature.properties.name;
+        const isSelected = id === selectedSpotId;
+        layer.setStyle(getMarkerOptions(isSelected));
       });
-      closeModal('auth-modal');
-      showToast("Signed in as Admin / Data Provider. Session persisted!");
-    }
-
-    async function handleAuth(type) {
-      const email = document.getElementById('auth-email').value.trim();
-      const password = document.getElementById('auth-password').value;
-      authError.style.display = 'none';
-
-      // Preset Admin Credentials
-      if (email === 'admin@geoportal.bd' && password === 'admin123') {
-        loginAsAdmin();
-        return;
-      }
-
-      if (!email || !password) {
-        authError.textContent = "Please fill in email and password.";
-        authError.style.display = 'block';
-        return;
-      }
-
-      if (sbClient) {
-        const res = (type === 'signup')
-          ? await sbClient.auth.signUp({ email, password })
-          : await sbClient.auth.signInWithPassword({ email, password });
-
-        if (res.error) {
-          authError.textContent = res.error.message;
-          authError.style.display = 'block';
-          return;
-        }
-      }
-
-      setSessionUser({
-        email: email,
-        role: email.includes('admin') ? 'admin' : 'user'
-      });
-      closeModal('auth-modal');
     }
 
     // -------------------------------------------------------------
-    // 4. GIS IMPORT & SHAPEFILE PARSER
-    // -------------------------------------------------------------
-    function showToast(msg) {
-      const toast = document.getElementById('status-toast');
-      toast.textContent = msg;
-      toast.style.display = 'block';
-      setTimeout(() => { toast.style.display = 'none'; }, 4000);
-    }
-
-    function openUploadModal() {
-      if (!currentUser) {
-        showToast("Please log in as Provider/Admin to upload layers.");
-        openAuthModal();
-        return;
-      }
-      document.getElementById('upload-msg').textContent = '';
-      document.getElementById('upload-modal').style.display = 'flex';
-    }
-
-    async function processUploadedFile() {
-      const fileInput = document.getElementById('gis-file-input');
-      const uploadMsg = document.getElementById('upload-msg');
-
-      if (!fileInput.files || fileInput.files.length === 0) {
-        uploadMsg.style.color = '#ef4444';
-        uploadMsg.textContent = 'Please choose a GeoJSON or Zipped Shapefile.';
-        return;
-      }
-
-      const file = fileInput.files[0];
-      uploadMsg.style.color = '#2563eb';
-      uploadMsg.textContent = 'Parsing spatial geometry...';
-
-      try {
-        let geojson;
-        if (file.name.endsWith('.zip')) {
-          const buffer = await file.arrayBuffer();
-          geojson = await shp(buffer);
-        } else {
-          const text = await file.text();
-          geojson = JSON.parse(text);
-        }
-
-        const featureCollection = Array.isArray(geojson) ? geojson[0] : geojson;
-        const features = featureCollection.features || [];
-
-        if (features.length === 0) {
-          throw new Error("No spatial features found in the file.");
-        }
-
-        // Draw immediately on Leaflet map
-        touristLayer.addData(featureCollection);
-
-        if (touristLayer.getLayers().length > 0) {
-          map.fitBounds(touristLayer.getBounds(), { padding: [40, 40] });
-        }
-
-        closeModal('upload-modal');
-        showToast(`Plotted ${features.length} spots successfully with full photo preview!`);
-
-      } catch (err) {
-        uploadMsg.style.color = '#ef4444';
-        uploadMsg.textContent = 'Error: ' + err.message;
-      }
-    }
-    // -------------------------------------------------------------
-    // HAZARD & EMERGENCY LAYERS
+    // 4. HAZARD & EMERGENCY RISK LAYER (Defined BEFORE Layer Control)
     // -------------------------------------------------------------
     const hazardData = {
       "type": "FeatureCollection",
@@ -614,8 +410,198 @@
         `);
       }
     });
-    
-    // Initialize session check on load
+
+    // -------------------------------------------------------------
+    // 5. UNIFIED LAYER CONTROLS
+    // -------------------------------------------------------------
+    L.control.layers(
+      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
+      { 
+        "Tourist Attractions": touristLayer, 
+        "Emergency / Hazard Zones": hazardLayer 
+      },
+      { collapsed: false }
+    ).addTo(map);
+
+    // -------------------------------------------------------------
+    // 6. PERSISTENT AUTHENTICATION & ADMIN ROLES
+    // -------------------------------------------------------------
+    let sbClient = null;
+    if (SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("invxmee.co)")) {
+      try {
+        sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      } catch (e) {
+        console.warn("Supabase init error:", e);
+      }
+    }
+
+    const authModal = document.getElementById('auth-modal');
+    const authBtn = document.getElementById('auth-btn');
+    const userStatus = document.getElementById('user-status');
+    const authError = document.getElementById('auth-error');
+
+    function updateNavbar() {
+      if (currentUser) {
+        authBtn.textContent = 'Log Out';
+        authBtn.classList.add('btn-secondary');
+        const roleBadge = currentUser.role === 'admin' 
+          ? `<span class="admin-badge">Admin / Provider</span>` 
+          : `<span style="color:#38bdf8;">User</span>`;
+        userStatus.innerHTML = `${roleBadge} ${currentUser.email.split('@')[0]} (Click to highlight)`;
+      } else {
+        authBtn.textContent = 'Log In / Provider';
+        authBtn.classList.remove('btn-secondary');
+        userStatus.textContent = 'Guest View (Hover for info)';
+        userStatus.style.color = '#94a3b8';
+        selectedSpotId = null;
+        refreshStyles();
+      }
+    }
+
+    function setSessionUser(user) {
+      currentUser = user;
+      localStorage.setItem('bangladesh_webmap_user', JSON.stringify(user));
+      updateNavbar();
+    }
+
+    function checkSavedSession() {
+      const saved = localStorage.getItem('bangladesh_webmap_user');
+      if (saved) {
+        try {
+          currentUser = JSON.parse(saved);
+          updateNavbar();
+        } catch (e) {
+          localStorage.removeItem('bangladesh_webmap_user');
+        }
+      }
+    }
+
+    function openAuthModal() {
+      if (currentUser) {
+        if (sbClient) sbClient.auth.signOut();
+        currentUser = null;
+        localStorage.removeItem('bangladesh_webmap_user');
+        updateNavbar();
+      } else {
+        authError.style.display = 'none';
+        authModal.style.display = 'flex';
+      }
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none';
+    }
+
+    function loginAsAdmin() {
+      setSessionUser({
+        email: "admin@geoportal.bd",
+        role: "admin"
+      });
+      closeModal('auth-modal');
+      showToast("Signed in as Admin / Data Provider. Session persisted!");
+    }
+
+    async function handleAuth(type) {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      authError.style.display = 'none';
+
+      if (email === 'admin@geoportal.bd' && password === 'admin123') {
+        loginAsAdmin();
+        return;
+      }
+
+      if (!email || !password) {
+        authError.textContent = "Please fill in email and password.";
+        authError.style.display = 'block';
+        return;
+      }
+
+      if (sbClient) {
+        const res = (type === 'signup')
+          ? await sbClient.auth.signUp({ email, password })
+          : await sbClient.auth.signInWithPassword({ email, password });
+
+        if (res.error) {
+          authError.textContent = res.error.message;
+          authError.style.display = 'block';
+          return;
+        }
+      }
+
+      setSessionUser({
+        email: email,
+        role: email.includes('admin') ? 'admin' : 'user'
+      });
+      closeModal('auth-modal');
+    }
+
+    // -------------------------------------------------------------
+    // 7. GIS IMPORT & SHAPEFILE PARSER
+    // -------------------------------------------------------------
+    function showToast(msg) {
+      const toast = document.getElementById('status-toast');
+      toast.textContent = msg;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 4000);
+    }
+
+    function openUploadModal() {
+      if (!currentUser) {
+        showToast("Please log in as Provider/Admin to upload layers.");
+        openAuthModal();
+        return;
+      }
+      document.getElementById('upload-msg').textContent = '';
+      document.getElementById('upload-modal').style.display = 'flex';
+    }
+
+    async function processUploadedFile() {
+      const fileInput = document.getElementById('gis-file-input');
+      const uploadMsg = document.getElementById('upload-msg');
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        uploadMsg.style.color = '#ef4444';
+        uploadMsg.textContent = 'Please choose a GeoJSON or Zipped Shapefile.';
+        return;
+      }
+
+      const file = fileInput.files[0];
+      uploadMsg.style.color = '#2563eb';
+      uploadMsg.textContent = 'Parsing spatial geometry...';
+
+      try {
+        let geojson;
+        if (file.name.endsWith('.zip')) {
+          const buffer = await file.arrayBuffer();
+          geojson = await shp(buffer);
+        } else {
+          const text = await file.text();
+          geojson = JSON.parse(text);
+        }
+
+        const featureCollection = Array.isArray(geojson) ? geojson[0] : geojson;
+        const features = featureCollection.features || [];
+
+        if (features.length === 0) {
+          throw new Error("No spatial features found in the file.");
+        }
+
+        touristLayer.addData(featureCollection);
+
+        if (touristLayer.getLayers().length > 0) {
+          map.fitBounds(touristLayer.getBounds(), { padding: [40, 40] });
+        }
+
+        closeModal('upload-modal');
+        showToast(`Plotted ${features.length} spots successfully!`);
+
+      } catch (err) {
+        uploadMsg.style.color = '#ef4444';
+        uploadMsg.textContent = 'Error: ' + err.message;
+      }
+    }
+
     checkSavedSession();
   </script>
 </body>
