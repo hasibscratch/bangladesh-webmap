@@ -309,7 +309,7 @@
       document.getElementById(id).style.display = 'none';
     }
 
-    async function processUploadedFile() {
+async function processUploadedFile() {
       const fileInput = document.getElementById('gis-file-input');
       const uploadMsg = document.getElementById('upload-msg');
 
@@ -333,24 +333,32 @@
           geojson = JSON.parse(text);
         }
 
-        // Standardize feature array if shpjs returns a multi-layer array
-        const features = Array.isArray(geojson) ? geojson[0].features : geojson.features;
+        // Standardize feature collection
+        const featureCollection = Array.isArray(geojson) ? geojson[0] : geojson;
+        const features = featureCollection.features || [];
 
-        if (!features || features.length === 0) {
-          throw new Error("No features found in the uploaded GIS file.");
+        if (features.length === 0) {
+          throw new Error("No spatial features found in the uploaded file.");
         }
 
-        uploadMsg.textContent = `Syncing ${features.length} spots to PostGIS...`;
+        // 1. Plot immediately on the Leaflet map
+        touristLayer.addData(featureCollection);
 
-        let insertedCount = 0;
-        for (const f of features) {
-          if (!f.geometry || f.geometry.type !== 'Point') continue;
-          
-          const coords = f.geometry.coordinates; // [lng, lat]
-          const props = f.properties || {};
+        // 2. Zoom the map to include the newly added points
+        if (touristLayer.getLayers().length > 0) {
+          map.fitBounds(touristLayer.getBounds(), { padding: [40, 40] });
+        }
 
-          if (sbClient) {
-            await sbClient.rpc('insert_tourist_spot', {
+        // 3. Persist to PostGIS if Supabase client is connected
+        let savedToDbCount = 0;
+        if (sbClient) {
+          uploadMsg.textContent = `Syncing ${features.length} spots to PostGIS...`;
+          for (const f of features) {
+            if (!f.geometry || f.geometry.type !== 'Point') continue;
+            const coords = f.geometry.coordinates; // [lng, lat]
+            const props = f.properties || {};
+
+            const { error } = await sbClient.rpc('insert_tourist_spot', {
               p_name: props.name || props.Name || 'New Tourist Spot',
               p_category: props.category || props.Category || 'General',
               p_description: props.desc || props.description || props.Description || '',
@@ -358,13 +366,13 @@
               p_lng: coords[0],
               p_lat: coords[1]
             });
+
+            if (!error) savedToDbCount++;
           }
-          insertedCount++;
         }
 
         closeModal('upload-modal');
-        showToast(`Successfully imported and synced ${insertedCount} spots!`);
-        await loadLivePostGISData();
+        showToast(`Plotted ${features.length} spots on map! (${savedToDbCount} saved to database)`);
 
       } catch (err) {
         uploadMsg.style.color = '#ef4444';
