@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bangladesh Explorer & Spatial Portal</title>
+  <title>Bangladesh Explorer, Hazard & Demographic Portal</title>
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -79,6 +79,49 @@
       border-radius: 4px;
       font-size: 0.8rem;
     }
+
+    /* On-Map Legend Styling */
+    .map-legend {
+      background: rgba(255, 255, 255, 0.94);
+      padding: 12px 14px;
+      border-radius: 6px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: #1e293b;
+      max-width: 210px;
+    }
+    .map-legend h4 {
+      margin: 0 0 8px 0;
+      font-size: 0.85rem;
+      color: #0f172a;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 4px;
+    }
+    .legend-section { margin-bottom: 8px; }
+    .legend-section strong { font-size: 0.75rem; color: #64748b; text-transform: uppercase; }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      margin: 3px 0;
+    }
+    .legend-box {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      margin-right: 8px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .legend-circle {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
     /* Modals */
     .modal-overlay {
       display: none;
@@ -121,7 +164,7 @@
     #status-toast {
       position: fixed;
       bottom: 24px;
-      right: 24px;
+      left: 24px;
       background: #1e293b;
       color: #fff;
       padding: 10px 18px;
@@ -136,9 +179,9 @@
 <body>
 
   <div id="navbar">
-    <h3>Bangladesh Explorer & Spatial Portal</h3>
+    <h3>Bangladesh Explorer, Hazards & Districts</h3>
     <div class="nav-actions">
-      <button class="btn btn-success" id="upload-btn" onclick="openUploadModal()">Import GIS Layer</button>
+      <button class="btn btn-success" id="upload-btn" onclick="openUploadModal()">Import QGIS Layer</button>
       <span id="user-status" style="font-size: 0.85rem; color: #94a3b8;">Guest View</span>
       <button class="btn" id="auth-btn" onclick="openAuthModal()">Log In / Provider</button>
     </div>
@@ -170,9 +213,9 @@
   <!-- File Upload Dialog -->
   <div id="upload-modal" class="modal-overlay">
     <div class="modal-box">
-      <h3>Import GIS Layer</h3>
+      <h3>Import QGIS Vector Layer</h3>
       <p style="font-size: 0.8rem; color: #64748b; margin-top: 0;">
-        Upload a <strong>.geojson</strong> or zipped Shapefile (<strong>.zip</strong>) exported from QGIS (Point Layer, EPSG:4326).
+        Upload a <strong>.geojson</strong> or zipped Shapefile (<strong>.zip</strong>) exported from QGIS (EPSG:4326).
       </p>
       <input type="file" id="gis-file-input" accept=".geojson,.json,.zip" style="margin: 12px 0; font-size: 0.85rem;" />
       <div id="upload-msg" style="font-size: 0.8rem; margin-bottom: 8px;"></div>
@@ -198,9 +241,8 @@
     // -------------------------------------------------------------
     const SUPABASE_URL = "[https://invxmeedrdrotjakbkdl.supabase.co](https://invxmeedrdrotjakbkdl.supabase.co)";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImludnhtZWVkcmRyb3RqYWtia2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTY0MTYsImV4cCI6MjEwOTY5MjQxNn0.L2Nbql5kpMCDctU1l1GmDAFOaftKmZHQipJ_Q5Qt-uU";
-
     // -------------------------------------------------------------
-    // 2. LEAFLET BASE MAP SETUP
+    // 2. BASE MAP SETUP
     // -------------------------------------------------------------
     const map = L.map('map').setView([23.8103, 90.4125], 7);
 
@@ -216,6 +258,9 @@
     let currentUser = null;
     let selectedSpotId = null;
 
+    // -------------------------------------------------------------
+    // 3. TOURIST SPOTS LAYER (Points)
+    // -------------------------------------------------------------
     function getMarkerOptions(isHighlighted) {
       return {
         radius: isHighlighted ? 12 : 8,
@@ -223,195 +268,75 @@
         color: '#ffffff',
         weight: 2,
         opacity: 1,
-        fillOpacity: 0.9
+        fillOpacity: 0.95
       };
     }
 
     function createPopupContent(props) {
-      const imgSrc = props.image || props.image_url || props.Image || props.img || props.photo || '';
+      const imgSrc = props.image || props.image_url || props.Image || props.img || '';
       const fallbackImg = "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=80";
 
       return `
         <div class="spot-card">
-          <span class="badge">${props.category || props.Category || 'Spot'}</span>
+          <span class="badge">${props.category || props.Category || 'Tourist Spot'}</span>
           <h4>${props.name || props.Name || 'Tourist Spot'}</h4>
           <p>${props.desc || props.description || props.Description || ''}</p>
-          ${imgSrc ? `<img src="${imgSrc}" alt="${props.name || 'Spot'}" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${fallbackImg}';" />` : `<img src="${fallbackImg}" alt="Spot" />`}
+          ${imgSrc ? `<img src="${imgSrc}" alt="${props.name}" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${fallbackImg}';" />` : `<img src="${fallbackImg}" alt="Spot" />`}
         </div>
       `;
     }
 
-    // -------------------------------------------------------------
-    // 3. EXPANDED NATIONWIDE TOURIST SPOTS (14 SPOTS)
-    // -------------------------------------------------------------
-    const comprehensiveTouristSpots = {
+    const touristSpotsData = {
       "type": "FeatureCollection",
       "features": [
         {
           "type": "Feature",
-          "properties": {
-            "id": 1,
-            "name": "Cox's Bazar Sea Beach",
-            "category": "Beach",
-            "desc": "The longest natural unbroken sea beach in the world (120 km).",
-            "image": "https://images.unsplash.com/photo-1608958435020-e8a7109ba809?w=400&q=80"
-          },
+          "properties": { "id": 1, "name": "Cox's Bazar Sea Beach", "category": "Beach", "desc": "120 km unbroken natural beach.", "image": "https://images.unsplash.com/photo-1608958435020-e8a7109ba809?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [91.9847, 21.4272] }
         },
         {
           "type": "Feature",
-          "properties": {
-            "id": 2,
-            "name": "Sundarbans Mangrove Forest",
-            "category": "Ecological Reserve",
-            "desc": "UNESCO World Heritage site and home of the Royal Bengal Tiger.",
-            "image": "https://images.unsplash.com/photo-1610484826967-09c5720778c7?w=400&q=80"
-          },
+          "properties": { "id": 2, "name": "Sundarbans Mangrove Forest", "category": "Ecological Reserve", "desc": "UNESCO World Heritage site & Bengal Tiger habitat.", "image": "https://images.unsplash.com/photo-1610484826967-09c5720778c7?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [89.5403, 22.2856] }
         },
         {
           "type": "Feature",
-          "properties": {
-            "id": 3,
-            "name": "Sajek Valley",
-            "category": "Hill Tracts",
-            "desc": "Known as the Valley of Clouds, nestled high in the Kasalong mountain range.",
-            "image": "https://images.unsplash.com/photo-1609137144813-7d9921338f24?w=400&q=80"
-          },
+          "properties": { "id": 3, "name": "Sajek Valley", "category": "Hill Tracts", "desc": "Valley of floating clouds in Rangamati.", "image": "https://images.unsplash.com/photo-1609137144813-7d9921338f24?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [92.2985, 23.3820] }
         },
         {
           "type": "Feature",
-          "properties": {
-            "id": 4,
-            "name": "Saint Martin's Island",
-            "category": "Coral Island",
-            "desc": "The only coral island in Bangladesh, located in the northeastern Bay of Bengal.",
-            "image": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80"
-          },
+          "properties": { "id": 4, "name": "Saint Martin's Island", "category": "Coral Island", "desc": "Bangladesh's only coral reef island.", "image": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [92.3225, 20.6272] }
         },
         {
           "type": "Feature",
-          "properties": {
-            "id": 5,
-            "name": "Sreemangal Tea Gardens",
-            "category": "Nature & Agro",
-            "desc": "The tea capital of Bangladesh with rolling emerald estates and Lawachara rainforest.",
-            "image": "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=80"
-          },
+          "properties": { "id": 5, "name": "Sreemangal Tea Country", "category": "Nature & Agro", "desc": "Lush tea terraces & Lawachara Forest.", "image": "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [91.7315, 24.3065] }
         },
         {
           "type": "Feature",
-          "properties": {
-            "id": 6,
-            "name": "Nilgiri Peak",
-            "category": "Hill Tracts",
-            "desc": "One of the highest hill tourist destinations in Thanchi, Bandarban.",
-            "image": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [92.3333, 21.9167] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 7,
-            "name": "Ratargul Freshwater Swamp Forest",
-            "category": "Swamp Forest",
-            "desc": "One of the few freshwater swamp forests in South Asia, navigated by wooden boats.",
-            "image": "https://images.unsplash.com/photo-1448375240586-882707db888b?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [91.9312, 25.0033] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 8,
-            "name": "Jaflong & Dawki River",
-            "category": "Landscape & River",
-            "desc": "Pristine stone bed river along the border hills of Meghalaya.",
-            "image": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [92.0175, 25.1634] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 9,
-            "name": "Lalbagh Fort",
-            "category": "Mughal Heritage",
-            "desc": "17th-century Mughal fort complex constructed by Shaista Khan in Dhaka.",
-            "image": "https://images.unsplash.com/photo-1582650625119-3a31f841839d?w=400&q=80"
-          },
+          "properties": { "id": 6, "name": "Lalbagh Fort", "category": "Mughal Heritage", "desc": "17th-century historic Mughal bastion in Dhaka.", "image": "https://images.unsplash.com/photo-1582650625119-3a31f841839d?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [90.3882, 23.7188] }
         },
         {
           "type": "Feature",
-          "properties": {
-            "id": 10,
-            "name": "Ahsan Manzil (Pink Palace)",
-            "category": "Architectural Heritage",
-            "desc": "Official residential palace and seat of the Nawab of Dhaka along Buriganga river.",
-            "image": "https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [90.4061, 23.7086] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 11,
-            "name": "Kuakata Sea Beach",
-            "category": "Beach",
-            "desc": "Sagor Konna, rare panoramic beach offering both sunrise and sunset views.",
-            "image": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80"
-          },
+          "properties": { "id": 7, "name": "Kuakata Beach", "category": "Beach", "desc": "Panoramic sunrise and sunset beach in Patuakhali.", "image": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [90.1197, 21.8167] }
         },
         {
           "type": "Feature",
-          "properties": {
-            "id": 12,
-            "name": "Shat Gombuj Mosque (Sixty Dome)",
-            "category": "Islamic Heritage",
-            "desc": "UNESCO World Heritage 15th-century brick mosque founded by Khan Jahan Ali in Bagerhat.",
-            "image": "https://images.unsplash.com/photo-1564507592333-c60657eea523?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [89.7423, 22.6744] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 13,
-            "name": "Somapura Mahavihara (Paharpur)",
-            "category": "Archaeological Heritage",
-            "desc": "Major 8th-century Buddhist monastic university and UNESCO World Heritage site in Naogaon.",
-            "image": "https://images.unsplash.com/photo-1548013146-72479768bada?w=400&q=80"
-          },
+          "properties": { "id": 8, "name": "Somapura Mahavihara", "category": "Archaeological", "desc": "8th-century Buddhist monastic landmark in Paharpur.", "image": "https://images.unsplash.com/photo-1548013146-72479768bada?w=400&q=80" },
           "geometry": { "type": "Point", "coordinates": [88.9772, 25.0315] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "id": 14,
-            "name": "Kantajew Temple",
-            "category": "Terracotta Heritage",
-            "desc": "18th-century Hindu terracotta temple showcasing outstanding Bengal craft in Dinajpur.",
-            "image": "https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?w=400&q=80"
-          },
-          "geometry": { "type": "Point", "coordinates": [88.6494, 25.7925] }
         }
       ]
     };
 
-    const touristLayer = L.geoJSON(comprehensiveTouristSpots, {
+    const touristLayer = L.geoJSON(touristSpotsData, {
       pointToLayer: (feature, latlng) => L.circleMarker(latlng, getMarkerOptions(false)),
       onEachFeature: (feature, layer) => {
         const props = feature.properties;
-        layer.bindTooltip(`<strong>${props.name || 'Spot'}</strong><br><small>${props.category || ''}</small>`, {
-          sticky: true,
-          direction: 'top'
-        });
+        layer.bindTooltip(`<strong>${props.name}</strong><br><small>${props.category}</small>`, { sticky: true });
         layer.bindPopup(createPopupContent(props));
         layer.on('click', () => {
           if (currentUser) {
@@ -425,64 +350,163 @@
     function refreshStyles() {
       touristLayer.eachLayer((layer) => {
         const id = layer.feature.properties.id || layer.feature.properties.name;
-        const isSelected = id === selectedSpotId;
-        layer.setStyle(getMarkerOptions(isSelected));
+        layer.setStyle(getMarkerOptions(id === selectedSpotId));
       });
     }
 
     // -------------------------------------------------------------
-    // 4. HAZARD & EMERGENCY RISK LAYER
+    // 4. DISTRICT POPULATION LAYER (With Mouseover Highlighting)
     // -------------------------------------------------------------
-    const hazardData = {
+    // Key representative district boundaries for demo & instant QGIS matching
+    const sampleDistrictsData = {
       "type": "FeatureCollection",
       "features": [
         {
           "type": "Feature",
+          "properties": { "district": "Dhaka", "division": "Dhaka", "population": 14734025, "density": 10098 },
+          "geometry": { "type": "Polygon", "coordinates": [[[90.15, 23.65], [90.55, 23.65], [90.55, 24.05], [90.15, 24.05], [90.15, 23.65]]] }
+        },
+        {
+          "type": "Feature",
+          "properties": { "district": "Chattogram", "division": "Chattogram", "population": 9169464, "density": 1735 },
+          "geometry": { "type": "Polygon", "coordinates": [[[91.60, 22.10], [92.15, 22.10], [92.15, 22.85], [91.60, 22.85], [91.60, 22.10]]] }
+        },
+        {
+          "type": "Feature",
+          "properties": { "district": "Sylhet", "division": "Sylhet", "population": 3857037, "density": 1118 },
+          "geometry": { "type": "Polygon", "coordinates": [[[91.70, 24.60], [92.25, 24.60], [92.25, 25.15], [91.70, 25.15], [91.70, 24.60]]] }
+        },
+        {
+          "type": "Feature",
+          "properties": { "district": "Khulna", "division": "Khulna", "population": 2613385, "density": 605 },
+          "geometry": { "type": "Polygon", "coordinates": [[[89.20, 22.40], [89.70, 22.40], [89.70, 23.00], [89.20, 23.00], [89.20, 22.40]]] }
+        },
+        {
+          "type": "Feature",
+          "properties": { "district": "Kurigram", "division": "Rangpur", "population": 2329161, "density": 1037 },
+          "geometry": { "type": "Polygon", "coordinates": [[[89.40, 25.50], [89.90, 25.50], [89.90, 26.15], [89.40, 26.15], [89.40, 25.50]]] }
+        },
+        {
+          "type": "Feature",
+          "properties": { "district": "Cox's Bazar", "division": "Chattogram", "population": 2823265, "density": 1133 },
+          "geometry": { "type": "Polygon", "coordinates": [[[91.80, 21.10], [92.35, 21.10], [92.35, 21.80], [91.80, 21.80], [91.80, 21.10]]] }
+        }
+      ]
+    };
+
+    function getDistrictColor(pop) {
+      return pop > 10000000 ? '#7c2d12' : // Over 10M
+             pop > 5000000  ? '#ea580c' : // 5M - 10M
+             pop > 3000000  ? '#f59e0b' : // 3M - 5M
+             pop > 2000000  ? '#0284c7' : // 2M - 3M
+                              '#0284c7';
+    }
+
+    function districtStyle(feature) {
+      return {
+        fillColor: getDistrictColor(feature.properties.population),
+        weight: 1.5,
+        opacity: 1,
+        color: '#475569',
+        dashArray: '3',
+        fillOpacity: 0.35
+      };
+    }
+
+    const districtsLayer = L.geoJSON(sampleDistrictsData, {
+      style: districtStyle,
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        const popFormatted = Number(p.population).toLocaleString();
+        
+        // Tooltip on mouseover
+        layer.bindTooltip(`
+          <div style="font-size:0.85rem;">
+            <strong>${p.district} District</strong> (${p.division})<br>
+            Population: <strong>${popFormatted}</strong><br>
+            Density: ${p.density} / sq.km
+          </div>
+        `, { sticky: true, direction: 'top' });
+
+        // Mouse hover interaction: highlight boundary
+        layer.on({
+          mouseover: function (e) {
+            const l = e.target;
+            l.setStyle({
+              weight: 3,
+              color: '#0f172a',
+              dashArray: '',
+              fillOpacity: 0.6
+            });
+            l.bringToFront();
+            touristLayer.bringToFront();
+          },
+          mouseout: function (e) {
+            districtsLayer.resetStyle(e.target);
+          }
+        });
+      }
+    });
+
+    // -------------------------------------------------------------
+    // 5. NORTHERN & SOUTHERN HAZARD ZONES
+    // -------------------------------------------------------------
+    const hazardData = {
+      "type": "FeatureCollection",
+      "features": [
+        // Southern: Cyclone & Coastal Storm Surge
+        {
+          "type": "Feature",
           "properties": {
-            "name": "Coastal Cyclone & Storm Surge Zone (Zone A)",
-            "hazard_type": "Cyclone & Surge",
+            "name": "Southern Coastal Cyclone & Surge Belt",
+            "region": "Southern",
+            "hazard_type": "Cyclone & Storm Surge",
             "risk_level": "Critical",
-            "advisory": "High vulnerability to Category 3+ cyclones and tidal surges > 3m. Check local shelter status.",
-            "shelters": 420
+            "advisory": "Vulnerable to Bay of Bengal cyclonic surges >3.5 meters and saline inundation.",
+            "shelters": 740
           },
           "geometry": {
             "type": "Polygon",
             "coordinates": [[
-              [89.15, 21.65], [90.45, 21.85], [91.80, 21.35], [92.35, 20.80],
-              [92.10, 21.40], [91.40, 22.30], [90.20, 22.40], [89.15, 22.00],
-              [89.15, 21.65]
+              [89.05, 21.65], [90.45, 21.85], [91.80, 21.35], [92.35, 20.75],
+              [92.10, 21.40], [91.40, 22.35], [90.20, 22.45], [89.05, 22.05],
+              [89.05, 21.65]
             ]]
           }
         },
+        // Northern: Monsoon Flood & Jamuna-Teesta Basin
         {
           "type": "Feature",
           "properties": {
-            "name": "Jamuna Riverbank Erosion & Flood Zone",
-            "hazard_type": "River Erosion & Flood",
+            "name": "Northern Jamuna-Brahmaputra Flood Basin",
+            "region": "Northern",
+            "hazard_type": "Monsoon River Flood",
             "risk_level": "High",
-            "advisory": "Active monsoon erosion corridor. Embankment breaching alert during July–September.",
-            "shelters": 85
+            "advisory": "High monsoon riverine flooding & embankment breaching along Jamuna and Teesta tributaries.",
+            "shelters": 140
           },
           "geometry": {
             "type": "Polygon",
             "coordinates": [[
-              [89.55, 25.40], [89.80, 25.40], [89.75, 24.20], [89.50, 24.20], [89.55, 25.40]
+              [89.35, 25.80], [89.95, 25.80], [89.85, 24.30], [89.45, 24.30], [89.35, 25.80]
             ]]
           }
         },
+        // Northern/Northeastern: Haor Flash Flood
         {
           "type": "Feature",
           "properties": {
-            "name": "Chattogram Hill Tracts Landslide Zone",
-            "hazard_type": "Landslide",
-            "risk_level": "Moderate",
-            "advisory": "Steep slopes susceptible to debris flows following >150mm rainfall in 24 hours.",
-            "shelters": 34
+            "name": "Northeastern Haor Flash Flood Corridor",
+            "region": "Northern",
+            "hazard_type": "Pre-Monsoon Flash Flood",
+            "risk_level": "High",
+            "advisory": "Rapid mountain runoff from Meghalaya hills inundating Boro crops in Sunamganj and Sylhet.",
+            "shelters": 95
           },
           "geometry": {
             "type": "Polygon",
             "coordinates": [[
-              [92.10, 22.80], [92.45, 22.80], [92.50, 22.15], [92.15, 22.15], [92.10, 22.80]
+              [91.10, 24.80], [91.80, 24.80], [91.75, 25.25], [91.10, 25.25], [91.10, 24.80]
             ]]
           }
         }
@@ -490,13 +514,11 @@
     };
 
     function getHazardStyle(feature) {
-      const level = feature.properties.risk_level;
-      if (level === 'Critical') {
-        return { color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.35, weight: 2 };
-      } else if (level === 'High') {
-        return { color: '#ea580c', fillColor: '#f97316', fillOpacity: 0.30, weight: 2 };
+      const type = feature.properties.hazard_type;
+      if (type.includes('Cyclone')) {
+        return { color: '#b91c1c', fillColor: '#ef4444', fillOpacity: 0.38, weight: 2 };
       } else {
-        return { color: '#ca8a04', fillColor: '#eab308', fillOpacity: 0.25, weight: 1.5, dashArray: '4' };
+        return { color: '#c2410c', fillColor: '#fb923c', fillOpacity: 0.35, weight: 2, dashArray: '4' };
       }
     }
 
@@ -504,234 +526,84 @@
       style: getHazardStyle,
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
-        layer.bindTooltip(`<strong>${p.name}</strong><br>Risk: <span style="color:#dc2626;font-weight:bold;">${p.risk_level}</span>`, { sticky: true });
+        layer.bindTooltip(`<strong>${p.name}</strong><br>Type: ${p.hazard_type}`, { sticky: true });
         layer.bindPopup(`
-          <div style="width:220px;">
-            <span class="badge" style="background:#fee2e2;color:#991b1b;">${p.hazard_type}</span>
+          <div style="width:230px;">
+            <span class="badge" style="background:#fee2e2;color:#991b1b;">${p.region} • ${p.risk_level}</span>
             <h4 style="margin:6px 0 4px 0;">${p.name}</h4>
-            <p style="font-size:0.8rem;margin:4px 0;"><strong>Advisory:</strong> ${p.advisory}</p>
-            <p style="font-size:0.75rem;color:#475569;margin:2px 0;"><strong>Designated Shelters:</strong> ${p.shelters}</p>
+            <p style="font-size:0.8rem;margin:4px 0;"><strong>Hazard:</strong> ${p.hazard_type}</p>
+            <p style="font-size:0.8rem;color:#475569;margin:4px 0;"><strong>Advisory:</strong> ${p.advisory}</p>
+            <p style="font-size:0.75rem;margin:2px 0;"><strong>Shelters in Zone:</strong> ${p.shelters}</p>
           </div>
         `);
       }
     });
 
     // -------------------------------------------------------------
-    // 5. AIR QUALITY INDEX (AQI) DATA LAYER
-    // -------------------------------------------------------------
-    const aqiStationsData = {
-      "type": "FeatureCollection",
-      "features": [
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Dhaka - US Embassy & Farmgate",
-            "aqi": 224,
-            "category": "Very Unhealthy",
-            "pm25": "174 µg/m³",
-            "color": "#7e22ce"
-          },
-          "geometry": { "type": "Point", "coordinates": [90.4125, 23.8103] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Gazipur Industrial Zone",
-            "aqi": 268,
-            "category": "Very Unhealthy",
-            "pm25": "218 µg/m³",
-            "color": "#7e22ce"
-          },
-          "geometry": { "type": "Point", "coordinates": [90.4284, 23.9999] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Narayanganj Shitalakshya",
-            "aqi": 195,
-            "category": "Unhealthy",
-            "pm25": "142 µg/m³",
-            "color": "#ef4444"
-          },
-          "geometry": { "type": "Point", "coordinates": [90.5032, 23.6238] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Chattogram Agrabad & Port",
-            "aqi": 142,
-            "category": "Unhealthy for Sensitive",
-            "pm25": "52 µg/m³",
-            "color": "#f97316"
-          },
-          "geometry": { "type": "Point", "coordinates": [91.8155, 22.3255] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Rajshahi Urban Center",
-            "aqi": 118,
-            "category": "Moderate",
-            "pm25": "42 µg/m³",
-            "color": "#eab308"
-          },
-          "geometry": { "type": "Point", "coordinates": [88.6049, 24.3745] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Khulna City Bypass",
-            "aqi": 135,
-            "category": "Unhealthy for Sensitive",
-            "pm25": "49 µg/m³",
-            "color": "#f97316"
-          },
-          "geometry": { "type": "Point", "coordinates": [89.5400, 22.8456] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Sylhet Amberkhana",
-            "aqi": 68,
-            "category": "Moderate / Fair",
-            "pm25": "20 µg/m³",
-            "color": "#84cc16"
-          },
-          "geometry": { "type": "Point", "coordinates": [91.8687, 24.8949] }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "station": "Cox's Bazar Coastal Base",
-            "aqi": 42,
-            "category": "Good",
-            "pm25": "10 µg/m³",
-            "color": "#22c55e"
-          },
-          "geometry": { "type": "Point", "coordinates": [91.9847, 21.4400] }
-        }
-      ]
-    };
-
-    const aqiLayer = L.geoJSON(aqiStationsData, {
-      pointToLayer: (feature, latlng) => {
-        return L.circleMarker(latlng, {
-          radius: 9,
-          fillColor: feature.properties.color,
-          color: '#ffffff',
-          weight: 2,
-          opacity: 1,
-          fillOpacity: 0.9
-        });
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties;
-        layer.bindTooltip(`<strong>AQI: ${p.aqi}</strong> (${p.station})`, { sticky: true });
-        layer.bindPopup(`
-          <div style="width:200px;">
-            <span class="badge" style="background:${p.color};color:#ffffff;">AQI ${p.aqi}</span>
-            <h4 style="margin:6px 0 2px 0;">${p.station}</h4>
-            <p style="font-size:0.8rem;margin:2px 0;"><strong>Status:</strong> ${p.category}</p>
-            <p style="font-size:0.75rem;color:#475569;margin:2px 0;"><strong>PM2.5 Density:</strong> ${p.pm25}</p>
-          </div>
-        `);
-      }
-    });
-
-    // -------------------------------------------------------------
-    // 6. POPULATION DENSITY & EXPOSURE LAYER
-    // -------------------------------------------------------------
-    const populationData = {
-      "type": "FeatureCollection",
-      "features": [
-        {
-          "type": "Feature",
-          "properties": {
-            "region": "Dhaka Megacity & Metropolitan Corridor",
-            "density": "29,000+ / sq.km",
-            "population": "22.5 Million",
-            "exposure_tier": "Extremely High Density"
-          },
-          "geometry": {
-            "type": "Polygon",
-            "coordinates": [[
-              [90.15, 23.60], [90.65, 23.60], [90.65, 24.15], [90.15, 24.15], [90.15, 23.60]
-            ]]
-          }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "region": "Chattogram Industrial & Port Axis",
-            "density": "9,500+ / sq.km",
-            "population": "5.3 Million",
-            "exposure_tier": "High Density"
-          },
-          "geometry": {
-            "type": "Polygon",
-            "coordinates": [[
-              [91.60, 22.15], [91.95, 22.15], [91.95, 22.60], [91.60, 22.60], [91.60, 22.15]
-            ]]
-          }
-        },
-        {
-          "type": "Feature",
-          "properties": {
-            "region": "Sylhet Agricultural & Urban Basin",
-            "density": "1,150 / sq.km",
-            "population": "3.8 Million",
-            "exposure_tier": "Moderate Density"
-          },
-          "geometry": {
-            "type": "Polygon",
-            "coordinates": [[
-              [91.60, 24.60], [92.20, 24.60], [92.20, 25.10], [91.60, 25.10], [91.60, 24.60]
-            ]]
-          }
-        }
-      ]
-    };
-
-    const populationLayer = L.geoJSON(populationData, {
-      style: (feature) => {
-        const tier = feature.properties.exposure_tier;
-        if (tier.includes('Extremely')) return { color: '#7c3aed', fillColor: '#8b5cf6', fillOpacity: 0.28, weight: 1.5 };
-        if (tier.includes('High')) return { color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 0.22, weight: 1.5 };
-        return { color: '#0d9488', fillColor: '#14b8a6', fillOpacity: 0.18, weight: 1.5 };
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties;
-        layer.bindTooltip(`<strong>${p.region}</strong><br>Density: ${p.density}`, { sticky: true });
-        layer.bindPopup(`
-          <div style="width:210px;">
-            <span class="badge" style="background:#ede9fe;color:#6d28d9;">${p.exposure_tier}</span>
-            <h4 style="margin:6px 0 3px 0;">${p.region}</h4>
-            <p style="font-size:0.8rem;margin:2px 0;"><strong>Density:</strong> ${p.density}</p>
-            <p style="font-size:0.75rem;color:#475569;margin:2px 0;"><strong>Population Estimate:</strong> ${p.population}</p>
-          </div>
-        `);
-      }
-    });
-
-    // -------------------------------------------------------------
-    // 7. COMPREHENSIVE LAYER CONTROLLER
+    // 6. LAYER CONTROLLER
     // -------------------------------------------------------------
     L.control.layers(
+      { "OpenStreetMap": osm, "Carto Dark": darkBasemap },
       { 
-        "OpenStreetMap Standard": osm, 
-        "Carto Dark Basemap": darkBasemap 
-      },
-      { 
-        "Tourist Attractions (14 Spots)": touristLayer, 
-        "Emergency / Hazard Risk Zones": hazardLayer,
-        "Air Quality Index (AQI)": aqiLayer,
-        "Population Density Exposure": populationLayer
+        "Tourist Spots (Points)": touristLayer,
+        "District Population (Hover)": districtsLayer,
+        "North & South Hazard Zones": hazardLayer
       },
       { collapsed: false }
     ).addTo(map);
 
     // -------------------------------------------------------------
-    // 8. AUTHENTICATION & SESSION SYSTEM
+    // 7. INTERACTIVE MAP LEGEND (Bottom Right)
+    // -------------------------------------------------------------
+    const legend = L.control({ position: 'bottomright' });
+
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'map-legend');
+      div.innerHTML = `
+        <h4>Map Legend</h4>
+        
+        <div class="legend-section">
+          <strong>Tourist Attractions</strong>
+          <div class="legend-row">
+            <span class="legend-circle" style="background:#2563eb; border: 1.5px solid #fff;"></span> Spot Location
+          </div>
+          <div class="legend-row">
+            <span class="legend-circle" style="background:#e11d48; border: 1.5px solid #fff;"></span> Selected Spot
+          </div>
+        </div>
+
+        <div class="legend-section">
+          <strong>Hazard Zones</strong>
+          <div class="legend-row">
+            <span class="legend-box" style="background:#ef4444; border:1px solid #b91c1c;"></span> South: Cyclone / Surge
+          </div>
+          <div class="legend-row">
+            <span class="legend-box" style="background:#fb923c; border:1px dashed #c2410c;"></span> North: River / Flash Flood
+          </div>
+        </div>
+
+        <div class="legend-section">
+          <strong>District Population</strong>
+          <div class="legend-row">
+            <span class="legend-box" style="background:#7c2d12;"></span> > 10 Million
+          </div>
+          <div class="legend-row">
+            <span class="legend-box" style="background:#ea580c;"></span> 5M – 10 Million
+          </div>
+          <div class="legend-row">
+            <span class="legend-box" style="background:#f59e0b;"></span> 3M – 5 Million
+          </div>
+          <div class="legend-row">
+            <span class="legend-box" style="background:#0284c7;"></span> < 3 Million
+          </div>
+        </div>
+      `;
+      return div;
+    };
+    legend.addTo(map);
+
+    // -------------------------------------------------------------
+    // 8. AUTHENTICATION & SESSION PERSISTENCE
     // -------------------------------------------------------------
     let sbClient = null;
     if (SUPABASE_URL.startsWith("http") && !SUPABASE_URL.includes("invxmee.co)")) {
@@ -800,12 +672,9 @@
     }
 
     function loginAsAdmin() {
-      setSessionUser({
-        email: "admin@geoportal.bd",
-        role: "admin"
-      });
+      setSessionUser({ email: "admin@geoportal.bd", role: "admin" });
       closeModal('auth-modal');
-      showToast("Signed in as Admin / Data Provider!");
+      showToast("Signed in as Admin / Provider!");
     }
 
     async function handleAuth(type) {
@@ -836,15 +705,12 @@
         }
       }
 
-      setSessionUser({
-        email: email,
-        role: email.includes('admin') ? 'admin' : 'user'
-      });
+      setSessionUser({ email: email, role: email.includes('admin') ? 'admin' : 'user' });
       closeModal('auth-modal');
     }
 
     // -------------------------------------------------------------
-    // 9. GIS FILE IMPORTER
+    // 9. QGIS FILE IMPORTER (.geojson or .zip shapefile)
     // -------------------------------------------------------------
     function showToast(msg) {
       const toast = document.getElementById('status-toast');
@@ -890,18 +756,30 @@
         const featureCollection = Array.isArray(geojson) ? geojson[0] : geojson;
         const features = featureCollection.features || [];
 
-        if (features.length === 0) {
-          throw new Error("No spatial features found in the file.");
-        }
+        if (features.length === 0) throw new Error("No features found in file.");
 
-        touristLayer.addData(featureCollection);
+        // Check if point or polygon layer
+        const firstGeom = features[0].geometry.type;
 
-        if (touristLayer.getLayers().length > 0) {
+        if (firstGeom.includes('Point')) {
+          touristLayer.addData(featureCollection);
           map.fitBounds(touristLayer.getBounds(), { padding: [40, 40] });
+          showToast(`Plotted ${features.length} points to Tourist Spots!`);
+        } else {
+          // Polygon/MultiPolygon (Districts or Hazards)
+          const customLayer = L.geoJSON(featureCollection, {
+            style: { color: '#059669', fillColor: '#10b981', fillOpacity: 0.35, weight: 2 },
+            onEachFeature: (f, l) => {
+              const p = f.properties;
+              const name = p.district || p.name || p.zone_name || 'Imported Feature';
+              l.bindTooltip(`<strong>${name}</strong>`, { sticky: true });
+            }
+          }).addTo(map);
+          map.fitBounds(customLayer.getBounds(), { padding: [40, 40] });
+          showToast(`Plotted ${features.length} polygons to the map!`);
         }
 
         closeModal('upload-modal');
-        showToast(`Plotted ${features.length} spots successfully!`);
 
       } catch (err) {
         uploadMsg.style.color = '#ef4444';
@@ -913,6 +791,3 @@
   </script>
 </body>
 </html>
-
-
-  
